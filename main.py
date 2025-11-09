@@ -112,7 +112,7 @@ def _cleanup_old_backups(
 
 def main():
     config = Config.from_env()
-    client = GoogleDriveClient(config.credentials_path)
+    client = GoogleDriveClient(config.credentials_path, config.token_path)
 
     for to_backup in config.backup_folders:
         _backup_folder(

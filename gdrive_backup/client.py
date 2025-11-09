@@ -12,17 +12,18 @@ class GoogleDriveClient:
     """Client for uploading files to Google Drive using OAuth 2.0."""
 
     SCOPES = ["https://www.googleapis.com/auth/drive.file"]
-    TOKEN_FILE = "token.json"
 
-    def __init__(self, credentials_path: str):
+    def __init__(self, credentials_path: str, token_path: str = "token.json"):
         """
         Initialize the Google Drive client.
 
         Args:
             credentials_path: Path to the OAuth 2.0 credentials JSON file
                             (client_secrets.json or similar).
+            token_path: Path to store the OAuth token (default: "token.json").
         """
         self.credentials_path = credentials_path
+        self.token_path = token_path
         self.service = self._authenticate()
 
     def _authenticate(self):
@@ -30,10 +31,10 @@ class GoogleDriveClient:
         Authenticate with Google Drive using OAuth 2.0.
 
         On first run, this will open a browser window for authentication.
-        Subsequent runs will use the stored refresh token from token.json.
+        Subsequent runs will use the stored refresh token from the configured path.
         """
         creds = None
-        token_path = Path(self.TOKEN_FILE)
+        token_path = Path(self.token_path)
 
         # Load existing token if it exists
         if token_path.exists():

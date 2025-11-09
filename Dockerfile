@@ -33,5 +33,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Set the virtual environment in PATH for direct command execution
 ENV PATH="/app/.venv/bin:$PATH"
 
+# Default token path for containerized environment
+ENV TOKEN_PATH="/gdrive_backup/token.json"
+ENV GOOGLE_CREDENTIALS_PATH="/gdrive_backup/credentials.json"
+
 # Run the backup script
 CMD ["python", "main.py"]

@@ -9,6 +9,7 @@ class Config:
     destination_folder_id: str
     backup_folders: list[str]
     credentials_path: str
+    token_path: str = "token.json"
     max_backup_versions: int = 3
 
     @classmethod
@@ -29,6 +30,8 @@ class Config:
         if not credentials_path:
             raise ValueError("GOOGLE_CREDENTIALS_PATH environment variable is required")
 
+        token_path = os.environ.get("TOKEN_PATH", "token.json")
+
         max_backup_versions_str = os.environ.get("MAX_BACKUP_VERSIONS", "5")
         try:
             max_backup_versions = int(max_backup_versions_str)
@@ -43,5 +46,6 @@ class Config:
             destination_folder_id=destination_folder_id,
             backup_folders=backup_folders,
             credentials_path=credentials_path,
+            token_path=token_path,
             max_backup_versions=max_backup_versions,
         )
