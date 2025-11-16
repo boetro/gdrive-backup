@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 from google.auth.transport.requests import Request
@@ -6,6 +7,8 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
+
+logger = logging.getLogger(__name__)
 
 
 class GoogleDriveClient:
@@ -39,11 +42,13 @@ class GoogleDriveClient:
         # Load existing token if it exists
         if token_path.exists():
             try:
+                logger.debug(f"Loading existing token from {token_path}")
                 creds = Credentials.from_authorized_user_file(
                     str(token_path), self.SCOPES
                 )
+                logger.debug("Token loaded successfully")
             except Exception as e:
-                print(f"Warning: Could not load token file: {e}")
+                logger.warning(f"Could not load token file: {e}")
                 creds = None
 
         # If credentials are invalid or don't exist, authenticate
@@ -51,10 +56,12 @@ class GoogleDriveClient:
             if creds and creds.expired and creds.refresh_token:
                 # Refresh expired token
                 try:
+                    logger.info("Refreshing expired access token...")
                     creds.refresh(Request())
+                    logger.info("Token refreshed successfully")
                 except Exception as e:
-                    print(f"Token refresh failed: {e}")
-                    print("Re-authenticating...")
+                    logger.warning(f"Token refresh failed: {e}")
+                    logger.info("Re-authenticating...")
                     creds = None
 
             if not creds:
@@ -64,12 +71,16 @@ class GoogleDriveClient:
                         f"OAuth credentials file not found: {self.credentials_path}"
                     )
 
+                logger.info("Starting OAuth 2.0 authentication flow...")
+                logger.info("A browser window will open for authentication")
                 flow = InstalledAppFlow.from_client_secrets_file(
                     self.credentials_path, self.SCOPES
                 )
                 creds = flow.run_local_server(port=8080)
+                logger.info("OAuth authentication completed")
 
             # Save the credentials for future runs
+            logger.debug(f"Saving credentials to {token_path}")
             with open(token_path, "w") as token:
                 token.write(creds.to_json())
 
@@ -106,16 +117,28 @@ class GoogleDriveClient:
             file_name = file_path.name
 
         file_metadata = {"name": file_name, "parents": [folder_id]}
+        file_size_mb = file_path.stat().st_size / 1024 / 1024
 
         try:
             media = MediaFileUpload(str(file_path), resumable=True)
-            file = (
-                self.service.files()
-                .create(body=file_metadata, media_body=media, fields="id")
-                .execute()
+            request = self.service.files().create(
+                body=file_metadata, media_body=media, fields="id"
             )
 
-            file_id = file.get("id")
+            response = None
+            last_progress = 0
+            while response is None:
+                status, response = request.next_chunk()
+                if status:
+                    progress = int(status.progress() * 100)
+                    # Log progress every 10% to avoid log spam
+                    if progress >= last_progress + 10 or progress == 100:
+                        logger.info(
+                            f"Upload progress: {progress}% ({progress * file_size_mb / 100:.2f} MB / {file_size_mb:.2f} MB)"
+                        )
+                        last_progress = progress
+
+            file_id = response.get("id")
             return file_id
 
         except HttpError as error:

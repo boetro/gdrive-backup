@@ -1,3 +1,4 @@
+import logging
 import tarfile
 import tempfile
 from datetime import datetime
@@ -5,6 +6,14 @@ from pathlib import Path
 
 from gdrive_backup.client import GoogleDriveClient
 from gdrive_backup.config import Config
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger(__name__)
 
 
 def _backup_folder(
@@ -36,29 +45,32 @@ def _backup_folder(
     folder_name = backup_path.name
     archive_name = f"{folder_name}_{timestamp}.tar.xz"
 
+    logger.info(f"Starting backup for: {to_backup}")
+
     # Create temporary directory for the archive
     with tempfile.TemporaryDirectory() as temp_dir:
         archive_path = Path(temp_dir) / archive_name
 
         # Create compressed tar archive with xz (LZMA) compression
         # xz provides excellent lossless compression
-        print(f"Creating archive for {to_backup}...")
+        logger.info(f"Creating archive: {archive_name}")
         with tarfile.open(archive_path, "w:xz") as tar:
             tar.add(backup_path, arcname=folder_name)
 
-        print(
-            f"Archive created: {archive_name} ({archive_path.stat().st_size / 1024 / 1024:.2f} MB)"
+        archive_size_mb = archive_path.stat().st_size / 1024 / 1024
+        logger.info(
+            f"Archive created successfully: {archive_name} ({archive_size_mb:.2f} MB)"
         )
 
         # Upload to Google Drive
-        print("Uploading to Google Drive...")
+        logger.info(f"Uploading {archive_name} to Google Drive...")
         file_id = client.upload_file(
             file_path=archive_path,
             folder_id=destination_folder_id,
             file_name=archive_name,
         )
 
-        print(f"Successfully uploaded {archive_name} (ID: {file_id})")
+        logger.info(f"Upload completed successfully (File ID: {file_id})")
 
     # Cleanup old backups
     _cleanup_old_backups(client, destination_folder_id, folder_name, max_versions)
@@ -76,7 +88,7 @@ def _cleanup_old_backups(
         folder_name: Name of the backed-up folder (for filtering).
         max_versions: Maximum number of versions to keep.
     """
-    print(f"Checking for old backups of {folder_name}...")
+    logger.info(f"Checking for old backups of '{folder_name}'...")
 
     # List all files in the destination folder
     all_files = client.list_files_in_folder(folder_id)
@@ -97,27 +109,45 @@ def _cleanup_old_backups(
     num_to_delete = len(backups) - max_versions
 
     if num_to_delete > 0:
-        print(
+        logger.info(
             f"Found {len(backups)} backup(s), deleting {num_to_delete} oldest version(s)..."
         )
         for backup in backups[:num_to_delete]:
-            print(f"  Deleting: {backup['name']} (ID: {backup['id']})")
+            logger.info(f"  Deleting old backup: {backup['name']}")
             client.delete_file(backup["id"])
-        print(f"Cleanup complete. {max_versions} version(s) retained.")
+        logger.info(
+            f"Cleanup complete. Retained {max_versions} most recent version(s)."
+        )
     else:
-        print(
+        logger.info(
             f"No cleanup needed. {len(backups)} version(s) found (max: {max_versions})."
         )
 
 
 def main():
-    config = Config.from_env()
-    client = GoogleDriveClient(config.credentials_path, config.token_path)
+    logger.info("=" * 60)
+    logger.info("Google Drive Backup - Starting")
+    logger.info("=" * 60)
 
-    for to_backup in config.backup_folders:
+    config = Config.from_env()
+    logger.info(
+        f"Loaded configuration: {len(config.backup_folders)} folder(s) to backup"
+    )
+    logger.info(f"Max backup versions to retain: {config.max_backup_versions}")
+
+    logger.info("Authenticating with Google Drive...")
+    client = GoogleDriveClient(config.credentials_path, config.token_path)
+    logger.info("Authentication successful")
+
+    for idx, to_backup in enumerate(config.backup_folders, 1):
+        logger.info(f"\n--- Backup {idx}/{len(config.backup_folders)}: {to_backup} ---")
         _backup_folder(
             client, config.destination_folder_id, to_backup, config.max_backup_versions
         )
+
+    logger.info("=" * 60)
+    logger.info("Google Drive Backup - Completed Successfully")
+    logger.info("=" * 60)
 
 
 if __name__ == "__main__":
